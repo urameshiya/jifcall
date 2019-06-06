@@ -1,0 +1,9 @@
+Package: zzz.canisitis.jifcall
+Name: jifcall
+Depends: mobilesubstrate, ws.hbang.common (>= 1.11)
+Version: 0.0.1
+Architecture: iphoneos-arm
+Description: Play video as background for incoming call screen.
+Maintainer: canisitis
+Author: canisitis
+Section: Tweaks
