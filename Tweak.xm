@@ -23,13 +23,8 @@ static JIFPreferences *prefs = [[JIFPreferences alloc] init];
 
 	AVPlayerViewController* playerVC = [[AVPlayerViewController alloc] init];
 
-	// NSString *urlString = @"file:///var/mobile/Media/DCIM/101APPLE/IMG_1514.mp4";
-	// NSURL *assetURL = [NSURL URLWithString:urlString];
-	// log("Reached here");
 	JIFModel *chosenJIF = [prefs defaultJIF];
-	// if ([prefs objectForKey:@"default"] == nil) {
-	// 	log("Cannot find him.");
-	// }
+
 	NSURL *assetURL = chosenJIF.videoURL;
 	AVAsset *asset = [AVAsset assetWithURL:assetURL];
 	AVPlayerItem *backgroundVideo = [AVPlayerItem playerItemWithAsset:asset];
@@ -41,15 +36,6 @@ static JIFPreferences *prefs = [[JIFPreferences alloc] init];
 	playerVC.view.transform = chosenJIF.transform;
 
 	player.muted = true;
-	
-	// UIView* view = self.view;
-	// UIView* playerView = playerVC.view;
-
-	// [self addChildViewController:playerVC];
-	// [view insertSubview:playerView atIndex:0];
-	// playerView.frame = view.bounds;
-	
-	// [player play];
 
 	self.jif_playerLooper = looper;
 	self.jif_playerVC = playerVC;

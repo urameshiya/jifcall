@@ -111,8 +111,9 @@
 }
 
 -(IBAction)scalePlayerLayer:(UIPinchGestureRecognizer*)gesture {
+    CALayer *layer = _playerLayer;
+
     if (gesture.state == UIGestureRecognizerStateBegan || gesture.state == UIGestureRecognizerStateChanged) {
-        CALayer *layer = _playerLayer;
         CGRect bounds = layer.bounds;
         CGAffineTransform newTransform = layer.affineTransform;
         // CGPoint centerOfPinch = [layer convertPoint:[gesture locationInView:_playerView] fromLayer:_playerView.layer];
@@ -120,7 +121,7 @@
         centerOfPinch.x -= CGRectGetMidX(bounds);
         centerOfPinch.y -= CGRectGetMidY(bounds);
 
-        // zoom at center of pinch gesture
+        // zoom at center of pinch gesture  
         newTransform = CGAffineTransformTranslate(newTransform, centerOfPinch.x, centerOfPinch.y);
         CGFloat scale = gesture.scale;
         newTransform = CGAffineTransformScale(newTransform, scale, scale);
@@ -134,6 +135,14 @@
         [CATransaction commit];
 
         gesture.scale = 1.0;
+    } else {
+        CGFloat layerTransformedWidth = CGRectGetWidth(layer.frame);
+        CGFloat constraintWidth = CGRectGetWidth(self.view.bounds);
+        
+        // resize image to fit screen
+        if (layerTransformedWidth < constraintWidth) { // image is smaller than screen, assuming aspect ratio is kept
+            layer.affineTransform = CGAffineTransformIdentity; // no need to care about translation
+        }
     }
 }
 
@@ -151,6 +160,33 @@
         _playerLayer.affineTransform = newTransform;
         // _playerLayer.position = newPosition;
         [CATransaction commit];
+    } else {
+        CGRect constraintRect = self.view.bounds;
+        CGRect layerFrame = _playerLayer.frame;
+        CALayer *layer = _playerLayer;
+
+        CGFloat offsetX = 0;
+        CGFloat offsetY = 0;
+
+        if (CGRectGetWidth(layerFrame) < CGRectGetWidth(constraintRect)) {
+            return;  // if image is smaller than screen then scale gesture will handle it;
+        }
+
+        if (CGRectGetMinX(layerFrame) > 0) {
+            offsetX = 0 - CGRectGetMinX(layerFrame);
+        }
+        else if (CGRectGetMaxX(layerFrame) < CGRectGetMaxX(constraintRect)) {
+            offsetX =  CGRectGetMaxX(constraintRect) - CGRectGetMaxX(layerFrame);
+        }
+
+        if (CGRectGetMinY(layerFrame) > 0) {
+            offsetY = 0 - CGRectGetMinY(layerFrame);
+        }
+        else if (CGRectGetMaxY(layerFrame) < CGRectGetMaxY(constraintRect)) {
+            offsetY =  CGRectGetMaxY(constraintRect) - CGRectGetMaxY(layerFrame);
+        }
+
+        layer.affineTransform = CGAffineTransformConcat(layer.affineTransform, CGAffineTransformMakeTranslation(offsetX, offsetY));
     }
 }
 
