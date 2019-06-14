@@ -81,7 +81,8 @@
 
 -(void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    [UIApplication.sharedApplication setStatusBarHidden:false withAnimation:UIStatusBarAnimationSlide];    
+    [UIApplication.sharedApplication setStatusBarHidden:false withAnimation:UIStatusBarAnimationSlide];  
+    [AVAudioSession.sharedInstance setActive:false error:nil];  
 }
 
 -(IBAction)cancelEdit {
@@ -107,6 +108,16 @@
 	AVQueuePlayer *player = [AVQueuePlayer queuePlayerWithItems:@[backgroundVideo]];
 	_avLooper = [AVPlayerLooper playerLooperWithPlayer:player templateItem:backgroundVideo];
     _playerView.player = player;
+    AVAudioSession *session = AVAudioSession.sharedInstance;
+
+    NSError *error;
+    [session setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionMixWithOthers error:&error];
+    [session setActive:true error:&error];
+
+    if (error) {
+        log("Error activating AVAudioSession %@", error);
+    }
+    player.muted = true;
     [player play];
 }
 

@@ -2,14 +2,30 @@
 #import "Tweak.h"
 #import "jifcallprefs/JIFPreferences.h"
 #import "jifcallprefs/JIFModel.h"
+#import "Springboard.h"
+#import "SBUIRemoteAlertHostInterface.h"
+#import "SBUIRemoteAlertServiceInterface.h"
 
+#import "notify.h"
 #import <os/log.h>
 #define log(s, ...) os_log(OS_LOG_DEFAULT, "__jifcall__ " s, ##__VA_ARGS__)
 #define log_function() log("%{public}@ was sent", NSStringFromSelector(_cmd))
 
-static JIFPreferences *prefs = [[JIFPreferences alloc] init];
+#define InCallServiceRemoteControllerClass @"PHInCallRemoteAlertShellViewController"
+#define InCallServiceBundleID 			   @"com.apple.InCallService"
+
+static CFNotificationCenterRef darwinCenter = CFNotificationCenterGetDarwinNotifyCenter();
+#define InCallNotification CFSTR("zzz.canisitis.jifcall.callIncoming")
+
+static JIFPreferences *prefs;
+static BOOL showingBanner = true;
+static CGFloat bannerHeight = 100;
+static bool incomingCallExists();
 
 %group IncomingCallJIF
+
+%hook PHInCallRemoteAlertShellViewController 
+%end
 
 %hook PHInCallRootViewController
 %property (nonatomic, retain) AVPlayerViewController *jif_playerVC;
@@ -17,13 +33,13 @@ static JIFPreferences *prefs = [[JIFPreferences alloc] init];
 
 -(void)viewDidLoad {	
 	%orig;	
-	if (!prefs.enabled) {
+
+	JIFModel *chosenJIF = [prefs defaultJIF];
+	if (!chosenJIF) {
 		return;
 	}
 
 	AVPlayerViewController* playerVC = [[AVPlayerViewController alloc] init];
-
-	JIFModel *chosenJIF = [prefs defaultJIF];
 
 	NSURL *assetURL = chosenJIF.videoURL;
 	AVAsset *asset = [AVAsset assetWithURL:assetURL];
@@ -39,7 +55,6 @@ static JIFPreferences *prefs = [[JIFPreferences alloc] init];
 
 	self.jif_playerLooper = looper;
 	self.jif_playerVC = playerVC;
-
 }
 
 -(void)callViewControllerStateChangedNotification:(NSNotification*)arg1 {
@@ -52,6 +67,7 @@ static JIFPreferences *prefs = [[JIFPreferences alloc] init];
 		[self jif_playBackgroundVideo];
 	} else {
 		if (playerVC.parentViewController) {
+			[playerVC.player pause];
 			[playerVC willMoveToParentViewController:nil];
 			[playerVC.view removeFromSuperview];
 			[playerVC removeFromParentViewController];
@@ -63,23 +79,198 @@ static JIFPreferences *prefs = [[JIFPreferences alloc] init];
 -(void)jif_playBackgroundVideo {
 	AVPlayerViewController *playerVC = self.jif_playerVC;
 	UIView* view = self.view;
+	view.frame = CGRectMake(0, 0, 375, 200);
+
 	UIView* playerView = playerVC.view;
 	AVPlayer *player = playerVC.player;
-	
+
+	player.muted = true;
+	player.volume = 0;
 
 	[self addChildViewController:playerVC];
 	[view insertSubview:playerView atIndex:0];
-	playerView.bounds = view.bounds;
+	playerView.bounds = UIScreen.mainScreen.bounds;
 	playerView.center = self.view.center;
 	[player play];
 }
 %end
 
+%hook PHInCallRootView
+
+-(id)hitTest:(CGPoint)point withEvent:(id)arg {
+	id orig = %orig;
+	log("hitTest at %@ returns %@", NSStringFromCGPoint(point), orig);
+	return orig;
+}
 %end
 
-%ctor {
-	if (prefs.enabled) {
-		%init(IncomingCallJIF);
-		log("loaded");
+%end
+
+
+%group JIFButtonColors
+
+#define CallStateIncoming 1
+#define CallStateOutgoing 2
+#define CallStateInterrupting 3
+
+%hook PHCallViewController
+
+-(void)setCurrentState:(short)state {
+	%orig;
+	log("State changed %d", state);
+	PHBottomBar *bottomBar = self.bottomBar;
+	if (state == CallStateIncoming) {
+		PHActionSlider *acceptButton = bottomBar.slidingButton.acceptButton;
+		bottomBar.supplementalTopLeftButton.backgroundColor = UIColor.purpleColor; // remind
+		bottomBar.supplementalTopRightButton.backgroundColor = UIColor.purpleColor; // message
+		// acceptButton.backgroundColor = UIColor.blueColor;
+		bottomBar.supplementalTopLeftButton.layer.cornerRadius = 5;
+		bottomBar.supplementalTopRightButton.layer.cornerRadius = 5;
+		bottomBar.supplementalTopLeftButton.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
+		// log("accept button views %@", acceptButton.subviews[0].recursiveDescription);
+		_UIGlintyStringView *glintyView = (_UIGlintyStringView *) acceptButton.subviews[0].subviews[1];
+		UIImage *tintableImage = [glintyView.shimmerImageView.image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+		glintyView.shimmerImageView.image = tintableImage;
+		glintyView.shimmerImageView.tintColor = UIColor.redColor;
 	}
+}
+
+%new
+-(void)jif_personalizeIncomingCallView {
+}
+
+%end
+
+%end
+
+%group SpringBoardServer
+
+%hook SBMainWorkspace
+-(bool)_executeAlertTransitionRequest:(SBWorkspaceTransitionRequest *)request {
+	if (!incomingCallExists()) {
+		return %orig;
+	}
+	SBAlert *alert = request.alertContext.alertToActivate.alert;
+	if (![alert matchesAnyInCallService]) {
+		return %orig;
+	}
+	log("Hijacking incoming call alert activation");
+
+	[alert setAlertManager:self.alertManager];
+	[alert setAlertDelegate:self.alertManager];
+
+	[self.alertManager _createAlertWindowIfNecessaryForAlert:alert];
+
+	[self.alertManager jif_activate:alert];
+	return true;
+}
+%end
+
+%hook SBAlertWindow
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+	log("Alert Window %@", self);
+	if (showingBanner) {
+		return point.y <= bannerHeight; // TODO: might not be able to touch other alerts but not my problem
+	} 
+	return %orig;
+}
+%end
+
+%hook SBAlertManager
+
+%new
+-(void)jif_activate:(SBAlert *)alert {
+	NSMutableArray *alerts = MSHookIvar<NSMutableArray *>(self, "_alerts");
+	[alerts insertObject:alert atIndex:0];
+
+	// Foregrounding InCallService is required to show the remote view
+	FBScene *serverScene = MSHookIvar<FBScene *>(self, "_alertServerScene");
+	log("Server settings %@", serverScene.settings);
+	[serverScene updateSettingsWithBlock:^(FBSMutableSceneSettings *newSettings) {
+		[newSettings setBackgrounded:NO];
+	}];
+
+	[self.alertWindow displayAlert:alert];
+	[alert activate];
+
+	[self.alertWindow makeKeyAndVisible];
+}
+
+%end
+
+%hook _SBRemoteAlertHostViewController
+-(void)setWallpaperTunnelActive:(bool)arg {
+	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
+		%orig(false);
+		return;
+	}
+	%orig;
+}
+
+-(void)setBackgroundMaterialDescriptor:(id)arg {
+	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
+		return;
+	}
+	%orig;
+}
+
+-(void)setBackgroundWeighting:(double)arg1 animationsSettings:(id)arg2 {
+	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
+		return;
+	}
+	%orig;
+}
+
+-(void)setBackgroundStyle:(int)arg1 withDuration:(double)arg2 {
+	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
+		return;
+	}
+	%orig;
+}
+
+%new
+-(bool)alertMatchesInCallServiceAndIncomingCallExists {
+	return [self.serviceClassName isEqualToString:InCallServiceRemoteControllerClass] && incomingCallExists();
+}
+%end
+
+%end // End group SpringboardServer
+
+%ctor {
+	prefs = [[JIFPreferences alloc] init];
+	if (!prefs.enabled) {
+		return;
+	}
+	NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
+
+	if (IN_SPRINGBOARD) {
+		%init(SpringBoardServer);
+		log("set up SpringBoard");
+	}
+
+    if ([bundleID isEqualToString:InCallServiceBundleID]) {
+        %init(IncomingCallJIF);
+        %init(JIFButtonColors);
+        log("hooked into InCallService");
+    } else {
+        %init(_ungrouped);
+        log("loaded");
+        }
+}
+
+
+@implementation JIFAlertWindow
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+	if (showingBanner) {
+		return point.y < 200; // TODO: might not be able to touch other alerts so fix that
+	} 
+	return [super pointInside:point withEvent:event];
+}
+@end
+
+static TUCallCenter *callCenter = [%c(TUCallCenter) sharedInstance];
+
+static bool incomingCallExists() {
+	log("incoming call %@", [callCenter incomingCall]);
+	return [callCenter incomingCall] != nil;
 }

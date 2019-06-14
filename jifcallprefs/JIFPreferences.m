@@ -18,7 +18,7 @@ static NSDictionary* serializeJIF(JIFModel *model);
 
 -(JIFModel *)defaultJIF {
     NSDictionary *representation = [_prefs objectForKey:@"default"];
-    return parseJIF(representation);
+    return representation ? parseJIF(representation) : nil;
 }
 
 -(JIFModel *)customJIFForID:(NSString *)identifier {
