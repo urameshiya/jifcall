@@ -25,14 +25,21 @@
 @property (retain) PHCallParticipantsView * participantsView;                            //@synthesize participantsView=_participantsView - In the implementation block
 @end
 
+@interface PHInCallRootView: UIView
+@end
+
 @interface PHInCallRootViewController: UIViewController
 @property (nonatomic, retain) AVPlayerViewController *jif_playerVC;
 @property (nonatomic, retain) AVPlayerLooper *jif_playerLooper;
 -(void)jif_playBackgroundVideo;
+-(void)showBanner;
+-(void)expandBanner;
 
 // PRIVATE
 @property (nonatomic,retain) UIViewController * audioCallViewController;                                 //@synthesize audioCallViewController=_audioCallViewController - In the implementation block
-
+@property (nonatomic,retain) UIViewController * currentViewController; 
+@property (retain) UINavigationController * audioCallNavigationController;
+@property (nonatomic,retain) UINavigationController * videoCallNavigationController;  
 @end
 
 @interface PHActionSlider: UIControl
@@ -50,7 +57,7 @@
 
 @end
 
-@interface PHSlidingButton
+@interface PHSlidingButton: UIView
 @property (retain) PHActionSlider * acceptButton;                             //@synthesize acceptButton=_acceptButton - In the implementation block
 
 @end
@@ -72,6 +79,8 @@
 @interface PHCallViewController: UIViewController
 @property (nonatomic,retain) PHBottomBar * bottomBar;
 
+//ADDED
+-(void)showBanner;
 @end
 
 @interface NSObject (Private)
@@ -118,4 +127,8 @@
 @end
 
 @interface JIFAlertWindow: UIWindow
+@end
+
+@protocol JIFBannerDisplaying
+-(void)showBanner;
 @end

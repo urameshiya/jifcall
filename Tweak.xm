@@ -18,7 +18,7 @@ static CFNotificationCenterRef darwinCenter = CFNotificationCenterGetDarwinNotif
 #define InCallNotification CFSTR("zzz.canisitis.jifcall.callIncoming")
 
 static JIFPreferences *prefs;
-static BOOL showingBanner = true;
+static BOOL showingBanner = false;
 static CGFloat bannerHeight = 100;
 static bool incomingCallExists();
 
@@ -33,7 +33,7 @@ static bool incomingCallExists();
 
 -(void)viewDidLoad {	
 	%orig;	
-
+	UIView *view = self.view;
 	JIFModel *chosenJIF = [prefs defaultJIF];
 	if (!chosenJIF) {
 		return;
@@ -55,6 +55,25 @@ static bool incomingCallExists();
 
 	self.jif_playerLooper = looper;
 	self.jif_playerVC = playerVC;
+
+	view.clipsToBounds = true;
+	view.userInteractionEnabled = true;
+	
+	UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(expandBanner)];
+	[view addGestureRecognizer:tapGesture];
+}
+
+%new
+-(void)expandBanner {
+	// UIViewController *playerVC = self.playerVC;
+	UIView *playerView = self.jif_playerVC.view;
+
+	[UIView animateWithDuration:0.5 animations:^{
+		self.view.frame = UIScreen.mainScreen.bounds;
+		playerView.center = self.view.center;
+	} completion: ^(BOOL finished){
+		showingBanner = false;
+	}];
 }
 
 -(void)callViewControllerStateChangedNotification:(NSNotification*)arg1 {
@@ -65,6 +84,7 @@ static bool incomingCallExists();
 
 	if ([callCenter incomingCall]) {
 		[self jif_playBackgroundVideo];
+		[self showBanner];
 	} else {
 		if (playerVC.parentViewController) {
 			[playerVC.player pause];
@@ -79,7 +99,7 @@ static bool incomingCallExists();
 -(void)jif_playBackgroundVideo {
 	AVPlayerViewController *playerVC = self.jif_playerVC;
 	UIView* view = self.view;
-	view.frame = CGRectMake(0, 0, 375, 200);
+	self.view.bounds = CGRectMake(0, 0, 375, bannerHeight);
 
 	UIView* playerView = playerVC.view;
 	AVPlayer *player = playerVC.player;
@@ -90,17 +110,43 @@ static bool incomingCallExists();
 	[self addChildViewController:playerVC];
 	[view insertSubview:playerView atIndex:0];
 	playerView.bounds = UIScreen.mainScreen.bounds;
-	playerView.center = self.view.center;
+	playerView.center = CGPointMake(375.0/2, 50);
 	[player play];
+}
+
+%new
+-(void)showBanner {
+	self.view.center = CGPointMake(375.0/2, -bannerHeight/2);
+	id currentCallVC = self.currentViewController;
+	if (currentCallVC == self.audioCallNavigationController) {
+		showingBanner = true;
+
+		[(id)self.audioCallViewController showBanner];
+		[UIView animateWithDuration:0.5 animations:^{
+			self.view.center = CGPointMake(375.0/2, bannerHeight/2);
+		} completion:nil];
+	}
 }
 %end
 
 %hook PHInCallRootView
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+	if (showingBanner) {
+		return self;
+	}
+	return %orig;
+}
+%end
 
--(id)hitTest:(CGPoint)point withEvent:(id)arg {
-	id orig = %orig;
-	log("hitTest at %@ returns %@", NSStringFromCGPoint(point), orig);
-	return orig;
+%hook PHCallViewController
+%new
+-(void)showBanner {
+	// PHBottomBar *bottomBar = self.bottomBar;
+	// bottomBar.mainLeftButton.hidden = false;
+	// bottomBar.mainRightButton.hidden = false;
+	// bottomBar.slidingButton.hidden = true;
+	// bottomBar.supplementalTopLeftButton.hidden = true;
+	// bottomBar.supplementalTopRightButton.hidden = true;
 }
 %end
 
@@ -123,11 +169,9 @@ static bool incomingCallExists();
 		PHActionSlider *acceptButton = bottomBar.slidingButton.acceptButton;
 		bottomBar.supplementalTopLeftButton.backgroundColor = UIColor.purpleColor; // remind
 		bottomBar.supplementalTopRightButton.backgroundColor = UIColor.purpleColor; // message
-		// acceptButton.backgroundColor = UIColor.blueColor;
 		bottomBar.supplementalTopLeftButton.layer.cornerRadius = 5;
 		bottomBar.supplementalTopRightButton.layer.cornerRadius = 5;
 		bottomBar.supplementalTopLeftButton.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
-		// log("accept button views %@", acceptButton.subviews[0].recursiveDescription);
 		_UIGlintyStringView *glintyView = (_UIGlintyStringView *) acceptButton.subviews[0].subviews[1];
 		UIImage *tintableImage = [glintyView.shimmerImageView.image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
 		glintyView.shimmerImageView.image = tintableImage;
