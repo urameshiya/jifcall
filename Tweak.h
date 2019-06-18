@@ -6,7 +6,7 @@
 @interface SBRemoteAlertAdapter
 @property (nonatomic,weak,readonly) NSString * serviceBundleIdentifier; 
 -(UIViewController *)effectiveViewController;
-
+-(void)setWallpaperTunnelActive:(bool)arg;
 @end
 
 @interface _SBRemoteAlertHostViewController: UIViewController <JIFRemoteAlertHostInterface>
@@ -34,6 +34,8 @@
 -(void)jif_playBackgroundVideo;
 -(void)showBanner;
 -(void)expandBanner;
+-(void)loadBackgroundVideoIfNeeded;
+-(id<SBUIRemoteAlertHostInterface>)_remoteViewControllerProxy;
 
 // PRIVATE
 @property (nonatomic,retain) UIViewController * audioCallViewController;                                 //@synthesize audioCallViewController=_audioCallViewController - In the implementation block

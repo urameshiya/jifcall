@@ -3,7 +3,7 @@
 #import "jifcallprefs/JIFPreferences.h"
 #import "jifcallprefs/JIFModel.h"
 #import "Springboard.h"
-#import "SBUIRemoteAlertHostInterface.h"
+// #import "SBUIRemoteAlertHostInterface.h"
 #import "SBUIRemoteAlertServiceInterface.h"
 
 #import "notify.h"
@@ -20,7 +20,14 @@ static CFNotificationCenterRef darwinCenter = CFNotificationCenterGetDarwinNotif
 static JIFPreferences *prefs;
 static BOOL showingBanner = false;
 static CGFloat bannerHeight = 100;
+static CGFloat bannerWidth = 375.0;
 static bool incomingCallExists();
+static TUCallCenter *callCenter = [%c(TUCallCenter) sharedInstance];
+// static bool pleaseShowBanner = false;
+
+static void resetGlobalVars() {
+	showingBanner = false;
+}
 
 %group IncomingCallJIF
 
@@ -31,60 +38,43 @@ static bool incomingCallExists();
 %property (nonatomic, retain) AVPlayerViewController *jif_playerVC;
 %property (nonatomic, retain) AVPlayerLooper *jif_playerLooper;
 
--(void)viewDidLoad {	
-	%orig;	
-	UIView *view = self.view;
-	JIFModel *chosenJIF = [prefs defaultJIF];
-	if (!chosenJIF) {
-		return;
-	}
-
-	AVPlayerViewController* playerVC = [[AVPlayerViewController alloc] init];
-
-	NSURL *assetURL = chosenJIF.videoURL;
-	AVAsset *asset = [AVAsset assetWithURL:assetURL];
-	AVPlayerItem *backgroundVideo = [AVPlayerItem playerItemWithAsset:asset];
-	AVQueuePlayer *player = [[AVQueuePlayer alloc] init];
-	AVPlayerLooper *looper = [AVPlayerLooper playerLooperWithPlayer:player templateItem:backgroundVideo];
-
-	playerVC.showsPlaybackControls = false;
-	playerVC.player = player;
-	playerVC.view.transform = chosenJIF.transform;
-
-	player.muted = true;
-
-	self.jif_playerLooper = looper;
-	self.jif_playerVC = playerVC;
-
-	view.clipsToBounds = true;
-	view.userInteractionEnabled = true;
-	
-	UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(expandBanner)];
-	[view addGestureRecognizer:tapGesture];
-}
-
 %new
 -(void)expandBanner {
 	// UIViewController *playerVC = self.playerVC;
 	UIView *playerView = self.jif_playerVC.view;
+	// id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
+	// 	[proxy setBackgroundStyle:4 withDuration:0];
+	// 	[proxy setWallpaperTunnelActive:true];
 
 	[UIView animateWithDuration:0.5 animations:^{
 		self.view.frame = UIScreen.mainScreen.bounds;
 		playerView.center = self.view.center;
 	} completion: ^(BOOL finished){
 		showingBanner = false;
+		id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
+		[proxy setBackgroundStyle:4 withDuration:0];
+		[proxy setWallpaperTunnelActive:true];
 	}];
 }
 
--(void)callViewControllerStateChangedNotification:(NSNotification*)arg1 {
+-(void)callStateChangedNotification:(NSNotification *)notification {
+	if (incomingCallExists()) {
+		resetGlobalVars();
+	}
 	%orig;
+}
 
-	TUCallCenter *callCenter = [%c(TUCallCenter) sharedInstance];
+-(void)updateCallControllerForCurrentState {
+	%orig;
+	
 	AVPlayerViewController *playerVC = self.jif_playerVC;
 
 	if ([callCenter incomingCall]) {
-		[self jif_playBackgroundVideo];
-		[self showBanner];
+		[self loadBackgroundVideoIfNeeded];
+
+		id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
+		// [proxy setBackgroundStyle:4 withDuration:0];
+		[proxy setWallpaperTunnelActive:false];
 	} else {
 		if (playerVC.parentViewController) {
 			[playerVC.player pause];
@@ -95,11 +85,57 @@ static bool incomingCallExists();
 	}
 }
 
+-(void)viewDidAppear:(bool)animated {
+	%orig;	
+	if ([callCenter incomingCall]) {
+		[self jif_playBackgroundVideo];
+		// if (!showingBanner) {
+		[self showBanner];
+		// }
+	}
+}
+
+%new
+-(void)loadBackgroundVideoIfNeeded {
+	if (self.jif_playerVC) {
+		return;
+	}
+	UIView *view = self.view;
+	JIFModel *chosenJIF = [prefs defaultJIF];
+	if (!chosenJIF) {
+		return;
+	}
+	log("Loading background video...");
+	AVPlayerViewController* playerVC = [[AVPlayerViewController alloc] init];
+
+	NSURL *assetURL = chosenJIF.videoURL;
+	AVAsset *asset = [AVAsset assetWithURL:assetURL];
+	AVPlayerItem *backgroundVideo = [AVPlayerItem playerItemWithAsset:asset];
+	AVQueuePlayer *player = [[AVQueuePlayer alloc] init];
+	AVPlayerLooper *looper = [AVPlayerLooper playerLooperWithPlayer:player templateItem:backgroundVideo];
+
+	playerVC.showsPlaybackControls = false;
+	playerVC.player = player;
+
+	player.muted = true;
+
+	self.jif_playerLooper = looper;
+	self.jif_playerVC = playerVC;
+
+	view.clipsToBounds = true;
+	view.userInteractionEnabled = true;
+	
+	UIView *playerView = playerVC.view;
+	playerView.transform = chosenJIF.transform;
+	
+	UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(expandBanner)];
+	[view addGestureRecognizer:tapGesture];
+}
+
 %new
 -(void)jif_playBackgroundVideo {
 	AVPlayerViewController *playerVC = self.jif_playerVC;
 	UIView* view = self.view;
-	self.view.bounds = CGRectMake(0, 0, 375, bannerHeight);
 
 	UIView* playerView = playerVC.view;
 	AVPlayer *player = playerVC.player;
@@ -109,21 +145,35 @@ static bool incomingCallExists();
 
 	[self addChildViewController:playerVC];
 	[view insertSubview:playerView atIndex:0];
-	playerView.bounds = UIScreen.mainScreen.bounds;
-	playerView.center = CGPointMake(375.0/2, 50);
 	[player play];
+
+	NSError *error = player.error;
+
+	if (error) {
+		log("Playing background video encounters and error, %@", error);
+}
 }
 
 %new
 -(void)showBanner {
-	self.view.center = CGPointMake(375.0/2, -bannerHeight/2);
-	id currentCallVC = self.currentViewController;
-	if (currentCallVC == self.audioCallNavigationController) {
-		showingBanner = true;
+	showingBanner = true;
 
+	UIView *playerView = self.jif_playerVC.view;
+	self.view.center = CGPointMake(bannerWidth/2, -bannerHeight/2);
+	self.view.bounds = CGRectMake(0, 0, bannerWidth, bannerHeight);
+	playerView.center = self.view.center;
+	playerView.bounds = UIScreen.mainScreen.bounds;
+
+	id currentCallVC = self.currentViewController;
+
+	id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
+		[proxy setBackgroundStyle:4 withDuration:0];
+		[proxy setWallpaperTunnelActive:false];
+
+	if (currentCallVC == self.audioCallNavigationController) {
 		[(id)self.audioCallViewController showBanner];
 		[UIView animateWithDuration:0.5 animations:^{
-			self.view.center = CGPointMake(375.0/2, bannerHeight/2);
+			self.view.center = CGPointMake(bannerWidth/2, bannerHeight/2);
 		} completion:nil];
 	}
 }
@@ -131,22 +181,26 @@ static bool incomingCallExists();
 
 %hook PHInCallRootView
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+	id orig = %orig;
 	if (showingBanner) {
+		if ([orig isKindOfClass:[UIButton class]]) {
+			return orig;
+		}
 		return self;
 	}
-	return %orig;
+	return orig;
 }
 %end
 
 %hook PHCallViewController
 %new
 -(void)showBanner {
-	// PHBottomBar *bottomBar = self.bottomBar;
-	// bottomBar.mainLeftButton.hidden = false;
-	// bottomBar.mainRightButton.hidden = false;
-	// bottomBar.slidingButton.hidden = true;
-	// bottomBar.supplementalTopLeftButton.hidden = true;
-	// bottomBar.supplementalTopRightButton.hidden = true;
+	PHBottomBar *bottomBar = self.bottomBar;
+	bottomBar.mainLeftButton.hidden = false;
+	bottomBar.mainRightButton.hidden = false;
+	bottomBar.slidingButton.hidden = true;
+	bottomBar.supplementalTopLeftButton.hidden = true;
+	bottomBar.supplementalTopRightButton.hidden = true;
 }
 %end
 
@@ -206,13 +260,13 @@ static bool incomingCallExists();
 	[self.alertManager _createAlertWindowIfNecessaryForAlert:alert];
 
 	[self.alertManager jif_activate:alert];
+	showingBanner = true; // TODO: Need better way to signal banner is being shown for pointInside:
 	return true;
 }
 %end
 
 %hook SBAlertWindow
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-	log("Alert Window %@", self);
 	if (showingBanner) {
 		return point.y <= bannerHeight; // TODO: might not be able to touch other alerts but not my problem
 	} 
@@ -225,6 +279,7 @@ static bool incomingCallExists();
 %new
 -(void)jif_activate:(SBAlert *)alert {
 	NSMutableArray *alerts = MSHookIvar<NSMutableArray *>(self, "_alerts");
+	[alerts removeObject:alert];
 	[alerts insertObject:alert atIndex:0];
 
 	// Foregrounding InCallService is required to show the remote view
@@ -244,10 +299,12 @@ static bool incomingCallExists();
 
 %hook _SBRemoteAlertHostViewController
 -(void)setWallpaperTunnelActive:(bool)arg {
-	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
-		%orig(false);
-		return;
-	}
+	// if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
+	// 	%orig(false);
+	// 	return;
+	// }
+	// %orig;
+	%log;
 	%orig;
 }
 
@@ -265,17 +322,13 @@ static bool incomingCallExists();
 	%orig;
 }
 
--(void)setBackgroundStyle:(int)arg1 withDuration:(double)arg2 {
-	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
-		return;
-	}
-	%orig;
-}
-
 %new
 -(bool)alertMatchesInCallServiceAndIncomingCallExists {
 	return [self.serviceClassName isEqualToString:InCallServiceRemoteControllerClass] && incomingCallExists();
 }
+%end
+
+%hook SBRemoteAlertAdapter
 %end
 
 %end // End group SpringboardServer
@@ -302,19 +355,9 @@ static bool incomingCallExists();
         }
 }
 
-
-@implementation JIFAlertWindow
-- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-	if (showingBanner) {
-		return point.y < 200; // TODO: might not be able to touch other alerts so fix that
-	} 
-	return [super pointInside:point withEvent:event];
-}
-@end
-
-static TUCallCenter *callCenter = [%c(TUCallCenter) sharedInstance];
+// static TUCallCenter *callCenter = [%c(TUCallCenter) sharedInstance];
 
 static bool incomingCallExists() {
-	log("incoming call %@", [callCenter incomingCall]);
+	// log("incoming call %@", [callCenter incomingCall]);
 	return [callCenter incomingCall] != nil;
 }
