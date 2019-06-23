@@ -4,7 +4,7 @@ ARCHS = arm64 arm64e
 TARGET = iphone:clang:11.2:11.2
 
 TWEAK_NAME = jifcall
-jifcall_FILES = Tweak.xm jifcallprefs/JIFModel.m jifcallprefs/JIFPreferences.m
+jifcall_FILES = Tweak.xm jifcallprefs/JIFModel.m jifcallprefs/JIFPreferences.m JIFBannerOverlay.m
 ADDITIONAL_OBJCFLAGS = -fobjc-arc
 jifcall_EXTRA_FRAMEWORKS += Cephei
 

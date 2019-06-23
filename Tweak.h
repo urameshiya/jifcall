@@ -1,6 +1,7 @@
 #import "_UIRemoteViewController.h"
 #import "SBUIRemoteAlertHostInterface.h"
 #import <Foundation/NSXPCInterface.h>
+#import "JIFBannerOverlay.h"
 
 
 @interface SBRemoteAlertAdapter
@@ -31,6 +32,7 @@
 @interface PHInCallRootViewController: UIViewController
 @property (nonatomic, retain) AVPlayerViewController *jif_playerVC;
 @property (nonatomic, retain) AVPlayerLooper *jif_playerLooper;
+@property (nonatomic, retain) JIFBannerOverlay *jif_bannerOverlay;
 -(void)jif_playBackgroundVideo;
 -(void)showBanner;
 -(void)expandBanner;
@@ -42,6 +44,7 @@
 @property (nonatomic,retain) UIViewController * currentViewController; 
 @property (retain) UINavigationController * audioCallNavigationController;
 @property (nonatomic,retain) UINavigationController * videoCallNavigationController;  
+-(void)requestInCallDismissalWithAnimation:(BOOL)arg1 ;
 @end
 
 @interface PHActionSlider: UIControl
@@ -65,6 +68,7 @@
 @end
 
 @interface PHBottomBar: UIView
+@property (retain) NSArray * buttonLayoutConstraints;
 @property (nonatomic,retain) UIButton * supplementalTopLeftButton;                     //@synthesize supplementalTopLeftButton=_supplementalTopLeftButton - In the implementation block
 @property (nonatomic,retain) UIButton * supplementalTopRightButton;                    //@synthesize supplementalTopRightButton=_supplementalTopRightButton - In the implementation block
 @property (nonatomic,retain) UIButton * mainLeftButton;                                //@synthesize mainLeftButton=_mainLeftButton - In the implementation block
@@ -74,7 +78,10 @@
 @property (nonatomic,retain) UIButton * supplementalBottomRightButton;                 //@synthesize supplementalBottomRightButton=_supplementalBottomRightButton - In the implementation block
 @property (nonatomic,retain) UIButton * supplementalBottomLeftButton;  
 @property (nonatomic,retain) PHSlidingButton * slidingButton;                          //@synthesize slidingButton=_slidingButton - In the implementation block
+-(void)setCurrentState:(long long)state;
 
+// ADDED
+-(void)updateLayoutConstraintsForBanner;
 @end
 
 // This guy is for both incoming and outgoing calls
@@ -82,7 +89,8 @@
 @property (nonatomic,retain) PHBottomBar * bottomBar;
 
 //ADDED
--(void)showBanner;
+-(void)bannerWillShow;
+-(void)bannerWillExpand;
 @end
 
 @interface NSObject (Private)
@@ -105,7 +113,11 @@
 
 @interface TUCallCenter
 @property (nonatomic,readonly) id incomingCall; 
+@property (nonatomic,readonly) id incomingVideoCall; 
+@property (nonatomic,readonly) id frontmostCall; 
 +(instancetype)sharedInstance;
+-(void)answerCall:(id)call;
+-(void)disconnectCall:(id)arg1 withReason:(int)arg2;
 @end
 
 // @interface _UIRemoteViewController
@@ -133,4 +145,7 @@
 
 @protocol JIFBannerDisplaying
 -(void)showBanner;
+@end
+
+@interface PHInCallRootViewController (Private) <JIFBannerOverlayDelegate>
 @end

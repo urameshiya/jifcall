@@ -70,3 +70,7 @@
 +(instancetype)sharedTelephonyManager;
 -(bool)incomingCallExists;
 @end
+
+@interface SBAlertToAppsWorkspaceTransaction
+@property (nonatomic,readonly) SBWorkspaceAlert * alert;
+@end

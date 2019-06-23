@@ -29,6 +29,10 @@ static void resetGlobalVars() {
 	showingBanner = false;
 }
 
+static id incomingAudioOrVideoCall() { // Multiway?
+	return [callCenter incomingCall] ?: [callCenter incomingVideoCall];
+}
+
 %group IncomingCallJIF
 
 %hook PHInCallRemoteAlertShellViewController 
@@ -37,16 +41,41 @@ static void resetGlobalVars() {
 %hook PHInCallRootViewController
 %property (nonatomic, retain) AVPlayerViewController *jif_playerVC;
 %property (nonatomic, retain) AVPlayerLooper *jif_playerLooper;
+%property (nonatomic, retain) JIFBannerOverlay *jif_bannerOverlay;
+
+%new
+-(void)bannerDidAccept {
+	id incomingCall = incomingAudioOrVideoCall();
+	if (!incomingCall) {
+		log("No incoming call...");
+	}
+	[callCenter answerCall:incomingCall];
+	[self requestInCallDismissalWithAnimation:true];
+}
+
+%new
+-(void)bannerDidTapOnOpenArea {
+	[self expandBanner];
+}
+
+%new
+-(void)bannerDidDecline {
+	id incomingCall = incomingAudioOrVideoCall();
+	if (!incomingCall) {
+		log("No incoming call...");
+	}
+	[callCenter disconnectCall:incomingCall withReason:2];
+	[self requestInCallDismissalWithAnimation:true];
+}
 
 %new
 -(void)expandBanner {
-	// UIViewController *playerVC = self.playerVC;
 	UIView *playerView = self.jif_playerVC.view;
-	// id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
-	// 	[proxy setBackgroundStyle:4 withDuration:0];
-	// 	[proxy setWallpaperTunnelActive:true];
 
 	[UIView animateWithDuration:0.5 animations:^{
+		if (self.currentViewController == self.audioCallNavigationController) {
+			[(id)self.audioCallViewController bannerWillExpand];
+		}
 		self.view.frame = UIScreen.mainScreen.bounds;
 		playerView.center = self.view.center;
 	} completion: ^(BOOL finished){
@@ -64,15 +93,25 @@ static void resetGlobalVars() {
 	%orig;
 }
 
+-(void)animateOutWithCompletionBlock:(id)completion {
+	if (showingBanner) {
+		[UIView animateWithDuration:0.2 animations:^{
+			self.view.center = CGPointMake(bannerWidth/2, -bannerHeight / 2);
+		} completion:completion];
+		return;
+	}
+	%orig;
+}
+
 -(void)updateCallControllerForCurrentState {
 	%orig;
 	
 	AVPlayerViewController *playerVC = self.jif_playerVC;
+	id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
 
-	if ([callCenter incomingCall]) {
+	if (incomingCallExists()) {
 		[self loadBackgroundVideoIfNeeded];
 
-		id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
 		// [proxy setBackgroundStyle:4 withDuration:0];
 		[proxy setWallpaperTunnelActive:false];
 	} else {
@@ -83,15 +122,17 @@ static void resetGlobalVars() {
 			[playerVC removeFromParentViewController];
 		}
 	}
+
+	if (showingBanner) {
+		[proxy setWallpaperTunnelActive:false];
+	}
 }
 
 -(void)viewDidAppear:(bool)animated {
 	%orig;	
-	if ([callCenter incomingCall]) {
+	if (incomingCallExists()) {
 		[self jif_playBackgroundVideo];
-		// if (!showingBanner) {
 		[self showBanner];
-		// }
 	}
 }
 
@@ -127,9 +168,6 @@ static void resetGlobalVars() {
 	
 	UIView *playerView = playerVC.view;
 	playerView.transform = chosenJIF.transform;
-	
-	UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(expandBanner)];
-	[view addGestureRecognizer:tapGesture];
 }
 
 %new
@@ -150,17 +188,28 @@ static void resetGlobalVars() {
 	NSError *error = player.error;
 
 	if (error) {
-		log("Playing background video encounters and error, %@", error);
-}
+		log("Playing background video encounters an error, %@", error);
+	}
 }
 
 %new
 -(void)showBanner {
 	showingBanner = true;
 
+	UIView *view = self.view;
+	JIFBannerOverlay *overlay = self.jif_bannerOverlay;
+	if (overlay == nil) {
+		overlay = [[JIFBannerOverlay alloc] initWithDelegate:self];
+		self.jif_bannerOverlay = overlay;
+		overlay.frame = view.bounds;
+		overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	}
+
+	[view addSubview:overlay];
+
 	UIView *playerView = self.jif_playerVC.view;
-	self.view.center = CGPointMake(bannerWidth/2, -bannerHeight/2);
-	self.view.bounds = CGRectMake(0, 0, bannerWidth, bannerHeight);
+	view.center = CGPointMake(bannerWidth/2, -bannerHeight/2);
+	view.bounds = CGRectMake(0, 0, bannerWidth, bannerHeight);
 	playerView.center = self.view.center;
 	playerView.bounds = UIScreen.mainScreen.bounds;
 
@@ -170,37 +219,32 @@ static void resetGlobalVars() {
 		[proxy setBackgroundStyle:4 withDuration:0];
 		[proxy setWallpaperTunnelActive:false];
 
-	if (currentCallVC == self.audioCallNavigationController) {
-		[(id)self.audioCallViewController showBanner];
-		[UIView animateWithDuration:0.5 animations:^{
-			self.view.center = CGPointMake(bannerWidth/2, bannerHeight/2);
-		} completion:nil];
-	}
-}
-%end
+	id callViewController;
 
-%hook PHInCallRootView
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-	id orig = %orig;
-	if (showingBanner) {
-		if ([orig isKindOfClass:[UIButton class]]) {
-			return orig;
-		}
-		return self;
+	if (currentCallVC == self.audioCallNavigationController) {
+		callViewController = self.audioCallViewController;
 	}
-	return orig;
+
+	[callViewController bannerWillShow];
+	[overlay animateIn];
+
+	[UIView animateWithDuration:0.5 animations:^{
+			view.center = CGPointMake(bannerWidth/2, bannerHeight/2);
+	} completion:nil];
 }
 %end
 
 %hook PHCallViewController
 %new
--(void)showBanner {
+-(void)bannerWillShow {
 	PHBottomBar *bottomBar = self.bottomBar;
-	bottomBar.mainLeftButton.hidden = false;
-	bottomBar.mainRightButton.hidden = false;
-	bottomBar.slidingButton.hidden = true;
-	bottomBar.supplementalTopLeftButton.hidden = true;
-	bottomBar.supplementalTopRightButton.hidden = true;
+	bottomBar.hidden = true;
+}
+
+%new
+-(void)bannerWillExpand {
+	PHBottomBar *bottomBar = self.bottomBar;
+	bottomBar.hidden = false;
 }
 %end
 
@@ -215,23 +259,23 @@ static void resetGlobalVars() {
 
 %hook PHCallViewController
 
--(void)setCurrentState:(short)state {
-	%orig;
-	log("State changed %d", state);
-	PHBottomBar *bottomBar = self.bottomBar;
-	if (state == CallStateIncoming) {
-		PHActionSlider *acceptButton = bottomBar.slidingButton.acceptButton;
-		bottomBar.supplementalTopLeftButton.backgroundColor = UIColor.purpleColor; // remind
-		bottomBar.supplementalTopRightButton.backgroundColor = UIColor.purpleColor; // message
-		bottomBar.supplementalTopLeftButton.layer.cornerRadius = 5;
-		bottomBar.supplementalTopRightButton.layer.cornerRadius = 5;
-		bottomBar.supplementalTopLeftButton.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
-		_UIGlintyStringView *glintyView = (_UIGlintyStringView *) acceptButton.subviews[0].subviews[1];
-		UIImage *tintableImage = [glintyView.shimmerImageView.image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-		glintyView.shimmerImageView.image = tintableImage;
-		glintyView.shimmerImageView.tintColor = UIColor.redColor;
-	}
-}
+// -(void)setCurrentState:(short)state {
+// 	%orig;
+// 	log("State changed %d", state);
+// 	PHBottomBar *bottomBar = self.bottomBar;
+// 	if (state == CallStateIncoming) {
+// 		PHActionSlider *acceptButton = bottomBar.slidingButton.acceptButton;
+// 		bottomBar.supplementalTopLeftButton.backgroundColor = UIColor.purpleColor; // remind
+// 		bottomBar.supplementalTopRightButton.backgroundColor = UIColor.purpleColor; // message
+// 		bottomBar.supplementalTopLeftButton.layer.cornerRadius = 5;
+// 		bottomBar.supplementalTopRightButton.layer.cornerRadius = 5;
+// 		bottomBar.supplementalTopLeftButton.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
+// 		_UIGlintyStringView *glintyView = (_UIGlintyStringView *) acceptButton.subviews[0].subviews[1];
+// 		UIImage *tintableImage = [glintyView.shimmerImageView.image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+// 		glintyView.shimmerImageView.image = tintableImage;
+// 		glintyView.shimmerImageView.tintColor = UIColor.redColor;
+// 	}
+// }
 
 %new
 -(void)jif_personalizeIncomingCallView {
@@ -297,30 +341,32 @@ static void resetGlobalVars() {
 
 %end
 
+// %hook SBAlertToAppsWorkspaceTransaction
+
+// -(BOOL)_shouldAnimateTransition {
+// 	if ([self.alert.alert matchesAnyInCallService]) {
+// 		log("False false false");
+// 		return false;
+// 	}
+// 	return %orig;
+// }
+// %end
+
 %hook _SBRemoteAlertHostViewController
--(void)setWallpaperTunnelActive:(bool)arg {
-	// if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
-	// 	%orig(false);
-	// 	return;
-	// }
-	// %orig;
-	%log;
-	%orig;
-}
 
--(void)setBackgroundMaterialDescriptor:(id)arg {
-	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
-		return;
-	}
-	%orig;
-}
+// -(void)setBackgroundMaterialDescriptor:(id)arg {
+// 	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
+// 		return;
+// 	}
+// 	%orig;
+// }
 
--(void)setBackgroundWeighting:(double)arg1 animationsSettings:(id)arg2 {
-	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
-		return;
-	}
-	%orig;
-}
+// -(void)setBackgroundWeighting:(double)arg1 animationsSettings:(id)arg2 {
+// 	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
+// 		return;
+// 	}
+// 	%orig;
+// }
 
 %new
 -(bool)alertMatchesInCallServiceAndIncomingCallExists {
@@ -359,5 +405,5 @@ static void resetGlobalVars() {
 
 static bool incomingCallExists() {
 	// log("incoming call %@", [callCenter incomingCall]);
-	return [callCenter incomingCall] != nil;
+	return [callCenter incomingCall] != nil || [callCenter incomingVideoCall] != nil;
 }
