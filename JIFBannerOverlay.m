@@ -14,15 +14,20 @@ static CGFloat buttonMinWidth = 50;
         _delegate = delegate;
 		_acceptButton = [[UIView alloc] initWithFrame:CGRectZero];
 		_declineButton = [[UIView alloc] initWithFrame:CGRectZero];
+        _callerLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        [self addSubview:_callerLabel];
 		[self addSubview:_acceptButton];
 		[self addSubview:_declineButton];
 
         _declineButton.translatesAutoresizingMaskIntoConstraints = false;
         _acceptButton.translatesAutoresizingMaskIntoConstraints = false;
+        _callerLabel.translatesAutoresizingMaskIntoConstraints = false;
         [self updateInitialLayoutConstraints];
 
         _declineButton.backgroundColor = UIColor.redColor;
         _acceptButton.backgroundColor = UIColor.greenColor;
+        [_callerLabel setMarqueeEnabled:true];
+        [_callerLabel setMarqueeRunning:true];
 
         UITapGestureRecognizer *acceptRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(acceptButtonDidTap)];
         [_acceptButton addGestureRecognizer:acceptRecognizer];
@@ -39,28 +44,37 @@ static CGFloat buttonMinWidth = 50;
 	return self;
 }
 
--(void)openAreaDidTap {
-    [self retractButtons];
-    [_delegate bannerDidTapOnOpenArea];
+-(void)updateCallerLabelWithName:(NSString *)name {
+    _callerLabel.text = name;
 }
 
--(void)retractButtons {
+-(void)openAreaDidTap {
+    [self retractButtonsThen:^{
+        [_delegate bannerDidTapOnOpenArea];
+    }];
+}
+
+-(void)retractButtonsThen:(void(^)(void))completion {
     _buttonWidthConstraint.constant = 0;
     _minWidthConstraint.active = false;
 
     [UIView animateWithDuration:0.2 animations:^{
         [self layoutIfNeeded];
-    } completion:nil];
+    } completion:^(BOOL finished){
+        completion();
+    }];
 }
 
 -(void)acceptButtonDidTap {
-    [self retractButtons];
-    [_delegate bannerDidAccept];
+    [self retractButtonsThen:^{
+        [_delegate bannerDidAccept];
+    }];
 }
 
 -(void)declineButtonDidTap {
-    [self retractButtons];
-    [_delegate bannerDidDecline];
+    [self retractButtonsThen:^{
+        [_delegate bannerDidDecline];
+    }];
 }
 
 -(void)handlePan:(UIPanGestureRecognizer *)gesture {
@@ -103,6 +117,7 @@ static CGFloat buttonMinWidth = 50;
 
     UIView *leftButton = _declineButton;
     UIView *rightButton = _acceptButton;
+    UIView *callerLabel = _callerLabel;
 
     NSMutableArray *constraintsToActivate =  [NSMutableArray arrayWithObjects:
         [leftButton.trailingAnchor constraintEqualToAnchor:rightButton.leadingAnchor],
@@ -112,6 +127,10 @@ static CGFloat buttonMinWidth = 50;
         [rightButton.topAnchor constraintEqualToAnchor:self.topAnchor],
         [rightButton.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
         [rightButton.widthAnchor constraintEqualToAnchor:leftButton.widthAnchor],
+        [callerLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+        [callerLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:10],
+        [callerLabel.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-10],
+        [callerLabel.trailingAnchor constraintEqualToAnchor:leftButton.leadingAnchor constant:-8],
         nil
     ];
 

@@ -24,7 +24,7 @@
 
 // ADDED
 -(void)jif_activate:(SBAlert *)alert;
-
+-(NSMutableArray *)mutableAlerts;
 @end
 
 @interface SBWorkspaceAlert
@@ -60,6 +60,7 @@
 
 @interface SBMainWorkspace
 @property (nonatomic,readonly) SBAlertManager *alertManager;                                                                                                   //@synthesize alertManager=_alertManager - In the implementation block
++(instancetype)_instanceIfExists;
 @end
 
 @interface UIWindow (Private)
@@ -73,4 +74,19 @@
 
 @interface SBAlertToAppsWorkspaceTransaction
 @property (nonatomic,readonly) SBWorkspaceAlert * alert;
+@end
+
+@interface SBUIController
++(instancetype)sharedInstance;
+-(BOOL)dissmissAlertItemsAndSheetsIfPossible;
+@end
+
+@interface SBSheetController
++(instancetype)sharedInstance;
+-(BOOL)dismissAllSheets;
+@end
+
+@interface SBIconController
++(instancetype)sharedInstance;
+-(void)handleHomeButtonTap;
 @end

@@ -26,7 +26,9 @@
 @property (retain) PHCallParticipantsView * participantsView;                            //@synthesize participantsView=_participantsView - In the implementation block
 @end
 
-@interface PHInCallRootView: UIView
+@interface PHVideoCallViewController: UIViewController
+-(void)startPreview;
+-(void)stopPreview;
 @end
 
 @interface PHInCallRootViewController: UIViewController
@@ -38,9 +40,11 @@
 -(void)expandBanner;
 -(void)loadBackgroundVideoIfNeeded;
 -(id<SBUIRemoteAlertHostInterface>)_remoteViewControllerProxy;
+-(bool)currentVCIsVideo;
 
 // PRIVATE
-@property (nonatomic,retain) UIViewController * audioCallViewController;                                 //@synthesize audioCallViewController=_audioCallViewController - In the implementation block
+@property (nonatomic,retain) UIViewController * audioCallViewController;   
+@property (nonatomic,retain) PHVideoCallViewController *videoCallViewController;
 @property (nonatomic,retain) UIViewController * currentViewController; 
 @property (retain) UINavigationController * audioCallNavigationController;
 @property (nonatomic,retain) UINavigationController * videoCallNavigationController;  
@@ -87,10 +91,6 @@
 // This guy is for both incoming and outgoing calls
 @interface PHCallViewController: UIViewController
 @property (nonatomic,retain) PHBottomBar * bottomBar;
-
-//ADDED
--(void)bannerWillShow;
--(void)bannerWillExpand;
 @end
 
 @interface NSObject (Private)
@@ -111,10 +111,14 @@
 
 @end
 
+@interface TUCall
+-(NSString *)displayName;
+@end
+
 @interface TUCallCenter
-@property (nonatomic,readonly) id incomingCall; 
-@property (nonatomic,readonly) id incomingVideoCall; 
-@property (nonatomic,readonly) id frontmostCall; 
+@property (nonatomic,readonly) TUCall *incomingCall; 
+@property (nonatomic,readonly) TUCall *incomingVideoCall; 
+@property (nonatomic,readonly) TUCall *frontmostCall; 
 +(instancetype)sharedInstance;
 -(void)answerCall:(id)call;
 -(void)disconnectCall:(id)arg1 withReason:(int)arg2;

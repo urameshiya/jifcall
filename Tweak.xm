@@ -23,13 +23,14 @@ static CGFloat bannerHeight = 100;
 static CGFloat bannerWidth = 375.0;
 static bool incomingCallExists();
 static TUCallCenter *callCenter = [%c(TUCallCenter) sharedInstance];
+static SBAlert* currentInCallAlert;
 // static bool pleaseShowBanner = false;
 
 static void resetGlobalVars() {
 	showingBanner = false;
 }
 
-static id incomingAudioOrVideoCall() { // Multiway?
+static TUCall* incomingAudioOrVideoCall() { // TODO: Multiway?
 	return [callCenter incomingCall] ?: [callCenter incomingVideoCall];
 }
 
@@ -38,10 +39,43 @@ static id incomingAudioOrVideoCall() { // Multiway?
 %hook PHInCallRemoteAlertShellViewController 
 %end
 
+// %hook PHAudioCallViewController
+// %new
+// -(void)bannerDidAccept {
+// 	id incomingCall = [callCenter incomingCall];
+// 	[callCenter answerCall:incomingCall];
+// }
+
+// %new
+// -(void)bannerDidDecline {
+// 	id incomingCall = [callCenter incomingCall];
+// 	[callCenter disconnectCall:incomingCall withReason:2];
+// }
+// %end
+
+// %hook PHVideoCallViewController
+// %new
+// -(void)bannerDidAccept {
+// 	id incomingCall = [self incomingVideoOrMultiwayCall];
+// 	[callCenter answerCall:incomingCall];
+// }
+
+// %new
+// -(void)bannerDidDecline {
+// 	id incomingCall = [self incomingVideoOrMultiwayCall];
+// 	[callCenter disconnectCall:incomingCall withReason:2];
+// }
+// %end
+
 %hook PHInCallRootViewController
 %property (nonatomic, retain) AVPlayerViewController *jif_playerVC;
 %property (nonatomic, retain) AVPlayerLooper *jif_playerLooper;
 %property (nonatomic, retain) JIFBannerOverlay *jif_bannerOverlay;
+
+%new
+-(bool)currentVCIsVideo {
+	return self.currentViewController == self.videoCallNavigationController;
+}
 
 %new
 -(void)bannerDidAccept {
@@ -51,6 +85,10 @@ static id incomingAudioOrVideoCall() { // Multiway?
 	}
 	[callCenter answerCall:incomingCall];
 	[self requestInCallDismissalWithAnimation:true];
+
+	if([self currentVCIsVideo]) {
+		[self.videoCallViewController startPreview];
+	}
 }
 
 %new
@@ -73,16 +111,19 @@ static id incomingAudioOrVideoCall() { // Multiway?
 	UIView *playerView = self.jif_playerVC.view;
 
 	[UIView animateWithDuration:0.5 animations:^{
-		if (self.currentViewController == self.audioCallNavigationController) {
-			[(id)self.audioCallViewController bannerWillExpand];
-		}
 		self.view.frame = UIScreen.mainScreen.bounds;
 		playerView.center = self.view.center;
 	} completion: ^(BOOL finished){
 		showingBanner = false;
+
 		id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
 		[proxy setBackgroundStyle:4 withDuration:0];
 		[proxy setWallpaperTunnelActive:true];
+
+		UIViewController *currentViewController = self.currentViewController;
+		currentViewController.view.hidden = false;
+
+		[self.jif_bannerOverlay removeFromSuperview];
 	}];
 }
 
@@ -98,9 +139,9 @@ static id incomingAudioOrVideoCall() { // Multiway?
 		[UIView animateWithDuration:0.2 animations:^{
 			self.view.center = CGPointMake(bannerWidth/2, -bannerHeight / 2);
 		} completion:completion];
-		return;
+	} else {
+		%orig;
 	}
-	%orig;
 }
 
 -(void)updateCallControllerForCurrentState {
@@ -205,6 +246,10 @@ static id incomingAudioOrVideoCall() { // Multiway?
 		overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 	}
 
+	TUCall *incomingCall = incomingAudioOrVideoCall();
+
+	log("display name %@", [incomingCall displayName]);
+	[overlay updateCallerLabelWithName:[incomingCall displayName]];
 	[view addSubview:overlay];
 
 	UIView *playerView = self.jif_playerVC.view;
@@ -213,38 +258,22 @@ static id incomingAudioOrVideoCall() { // Multiway?
 	playerView.center = self.view.center;
 	playerView.bounds = UIScreen.mainScreen.bounds;
 
-	id currentCallVC = self.currentViewController;
-
 	id<SBUIRemoteAlertHostInterface> proxy = self._remoteViewControllerProxy;
 		[proxy setBackgroundStyle:4 withDuration:0];
 		[proxy setWallpaperTunnelActive:false];
 
-	id callViewController;
+	UIViewController *currentViewController = self.currentViewController;
+	currentViewController.view.hidden = true;
 
-	if (currentCallVC == self.audioCallNavigationController) {
-		callViewController = self.audioCallViewController;
+	if([self currentVCIsVideo]) {
+		[self.videoCallViewController stopPreview];
 	}
 
-	[callViewController bannerWillShow];
 	[overlay animateIn];
 
 	[UIView animateWithDuration:0.5 animations:^{
 			view.center = CGPointMake(bannerWidth/2, bannerHeight/2);
 	} completion:nil];
-}
-%end
-
-%hook PHCallViewController
-%new
--(void)bannerWillShow {
-	PHBottomBar *bottomBar = self.bottomBar;
-	bottomBar.hidden = true;
-}
-
-%new
--(void)bannerWillExpand {
-	PHBottomBar *bottomBar = self.bottomBar;
-	bottomBar.hidden = false;
 }
 %end
 
@@ -334,39 +363,20 @@ static id incomingAudioOrVideoCall() { // Multiway?
 	}];
 
 	[self.alertWindow displayAlert:alert];
-	[alert activate];
+	// [alert activate];
 
-	[self.alertWindow makeKeyAndVisible];
+	// [self.alertWindow makeKeyAndVisible];
+	[self.alertWindow setHidden:false];
+}
+
+%new
+-(NSMutableArray *)mutableAlerts {
+	return MSHookIvar<NSMutableArray *>(self, "_alerts");
 }
 
 %end
 
-// %hook SBAlertToAppsWorkspaceTransaction
-
-// -(BOOL)_shouldAnimateTransition {
-// 	if ([self.alert.alert matchesAnyInCallService]) {
-// 		log("False false false");
-// 		return false;
-// 	}
-// 	return %orig;
-// }
-// %end
-
 %hook _SBRemoteAlertHostViewController
-
-// -(void)setBackgroundMaterialDescriptor:(id)arg {
-// 	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
-// 		return;
-// 	}
-// 	%orig;
-// }
-
-// -(void)setBackgroundWeighting:(double)arg1 animationsSettings:(id)arg2 {
-// 	if ([self alertMatchesInCallServiceAndIncomingCallExists]) {
-// 		return;
-// 	}
-// 	%orig;
-// }
 
 %new
 -(bool)alertMatchesInCallServiceAndIncomingCallExists {
@@ -374,7 +384,35 @@ static id incomingAudioOrVideoCall() { // Multiway?
 }
 %end
 
+%hook SBUIController
+-(BOOL)_handleButtonEventToSuspendDisplays:(BOOL)arg1 displayWasSuspendedOut:(BOOL*)arg2 {
+	SBMainWorkspace *mainWorkspace = [%c(SBMainWorkspace) _instanceIfExists];
+	SBAlertManager *alertManager = mainWorkspace.alertManager;
+	SBAlert *activeAlert = alertManager.activeAlert;
+
+	if (incomingCallExists() && [activeAlert matchesAnyInCallService]) {
+		NSMutableArray *alerts = [mainWorkspace.alertManager mutableAlerts];
+		[alerts removeObject:activeAlert];
+		bool orig = %orig;
+		[alerts insertObject:activeAlert atIndex:0];
+		return orig;
+	} else {
+		return %orig;
+	}
+}
+%end
+
 %hook SBRemoteAlertAdapter
+-(BOOL)handleHomeButtonPress {
+	// SBUIController *returnHome = [%c(SBUIController) sharedInstance];
+
+	// [returnHome dissmissAlertItemsAndSheetsIfPossible];
+	return %orig;
+}
+
+// -(BOOL)wantsHomeButtonPress {
+// 	return false;
+// }
 %end
 
 %end // End group SpringboardServer
