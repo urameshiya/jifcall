@@ -1,7 +1,8 @@
 #import "_UIRemoteViewController.h"
 #import "SBUIRemoteAlertHostInterface.h"
 #import <Foundation/NSXPCInterface.h>
-#import "JIFBannerOverlay.h"
+#import "JIFBannerController.h"
+#import "TelephonyUtilities.h"
 
 
 @interface SBRemoteAlertAdapter
@@ -34,7 +35,6 @@
 @interface PHInCallRootViewController: UIViewController
 @property (nonatomic, retain) AVPlayerViewController *jif_playerVC;
 @property (nonatomic, retain) AVPlayerLooper *jif_playerLooper;
-@property (nonatomic, retain) JIFBannerOverlay *jif_bannerOverlay;
 -(void)jif_playBackgroundVideo;
 -(void)showBanner;
 -(void)expandBanner;
@@ -111,19 +111,6 @@
 
 @end
 
-@interface TUCall
--(NSString *)displayName;
-@end
-
-@interface TUCallCenter
-@property (nonatomic,readonly) TUCall *incomingCall; 
-@property (nonatomic,readonly) TUCall *incomingVideoCall; 
-@property (nonatomic,readonly) TUCall *frontmostCall; 
-+(instancetype)sharedInstance;
--(void)answerCall:(id)call;
--(void)disconnectCall:(id)arg1 withReason:(int)arg2;
-@end
-
 // @interface _UIRemoteViewController
 // +(id)requestViewController:(id)arg1 fromServiceWithBundleIdentifier:(id)arg2 connectionHandler:(/*^block*/id)arg3;
 
@@ -149,7 +136,4 @@
 
 @protocol JIFBannerDisplaying
 -(void)showBanner;
-@end
-
-@interface PHInCallRootViewController (Private) <JIFBannerOverlayDelegate>
 @end

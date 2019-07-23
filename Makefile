@@ -1,12 +1,13 @@
 include $(THEOS)/makefiles/common.mk
 
 ARCHS = arm64 arm64e
-TARGET = iphone:clang:11.2:11.2
+TARGET = iphone:clang:12.1.1:12.1.1
 
 TWEAK_NAME = jifcall
-jifcall_FILES = Tweak.xm jifcallprefs/JIFModel.m jifcallprefs/JIFPreferences.m JIFBannerOverlay.m
+jifcall_FILES = Tweak.xm jifcallprefs/JIFModel.m jifcallprefs/JIFPreferences.m JIFWindow.m JIFBannerController.m
 ADDITIONAL_OBJCFLAGS = -fobjc-arc
 jifcall_EXTRA_FRAMEWORKS += Cephei
+jifcall_PRIVATE_FRAMEWORKS += SpringBoardFoundation
 
 
 

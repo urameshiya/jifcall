@@ -90,17 +90,52 @@
 }
 
 -(IBAction)saveEdit {
-    JIFSaver *saver = [JIFSaver new];
     JIFPreferences *prefs = [JIFPreferences new];
-    JIFModel *newModel = [JIFModel new];
 
-    NSURL *destURL = [saver persistJIFAtURL:_assetURL newName:@"default"];
-    newModel.videoURL = destURL;
-    newModel.transform = _playerLayer.affineTransform;
+    AVMutableComposition *noAudioComposition = [AVMutableComposition composition];
+    AVAssetTrack *videoTrack = [_asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
+    if (videoTrack == nil) {
+        log("Error getting video track from asset.");
+        return;
+    }
+    NSError *error;
+    AVMutableCompositionTrack *newTrack = [noAudioComposition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
+    [newTrack insertTimeRange:videoTrack.timeRange ofTrack:videoTrack atTime:kCMTimeZero error:&error];
 
-    [prefs setJIFAsDefault:newModel];
+    if (error) {
+        log("Encountered an error while trying to extract video\n%@", error);
+        return;
+    }
+    
+    NSURL *destURL = [JIFSaver urlForJIFNamed:@"default"];
+    JIFSaver *saver = [[JIFSaver alloc] initWithDestinationURL:destURL];
+    AVAssetExportSession *exportSession = [AVAssetExportSession exportSessionWithAsset:noAudioComposition presetName:AVAssetExportPresetHighestQuality];
+    exportSession.outputFileType = AVFileTypeQuickTimeMovie;
+    exportSession.outputURL = saver.tempURL;
+    
+    [exportSession exportAsynchronouslyWithCompletionHandler:^{
+        if (exportSession.error) {
+            log("Encountered an error during export\n%@", exportSession.error);
+            [self dismissViewControllerAnimated:true completion:nil];
+            return;
+        }
 
-    [self dismissViewControllerAnimated:true completion:nil];
+        NSError *error;
+        [saver finalizeFileWithError:&error];
+        if (error) {
+            log("Error saving file\n%@", error);
+            [self dismissViewControllerAnimated:true completion:nil];
+            return;
+        }
+
+        JIFModel *newModel = [JIFModel new];
+        newModel.videoURL = destURL;
+        newModel.transform = _playerLayer.affineTransform;
+
+        [prefs setJIFAsDefault:newModel];
+        [self dismissViewControllerAnimated:true completion:nil];
+    }];
+
 }
 
 -(void)beginFetchingVideoForPlayerLayer {

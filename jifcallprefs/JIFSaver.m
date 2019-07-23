@@ -2,10 +2,43 @@
 #import "Log.h"
 #import "Paths.h"
 
-@implementation JIFSaver
+@implementation JIFSaver {
+    NSURL *_finalURL;
+    NSURL *_tempURL;
+    NSFileManager *_fileManager;
+}
+
+-(instancetype)initWithDestinationURL:(NSURL *)url {
+    self = [super init];
+    if (self) {
+        _finalURL = url;
+        _tempURL = [url URLByAppendingPathExtension:@"tmp"];
+        _fileManager = NSFileManager.defaultManager;
+    }
+
+    return self;
+}
+
+-(void)cleanUpTemporaryFiles {
+    [_fileManager removeItemAtURL:_tempURL error:nil];
+}
+
+-(void)finalizeFileWithError:(NSError * _Nullable *)error {
+    [_fileManager replaceItemAtURL:_finalURL
+                                            withItemAtURL:_tempURL
+                                            backupItemName:nil
+                                            options:NSFileManagerItemReplacementUsingNewMetadataOnly
+                                            resultingItemURL:nil
+                                            error:error];
+    // if (*error) {
+    //     // TODO: Display error
+    //     log("JIFSaver encounters error while overwriting file.\nError: %@", *error);
+    // }
+    [self cleanUpTemporaryFiles];
+}
 
 -(void)createLibraryFolderIfNeeded {
-    [NSFileManager.defaultManager createDirectoryAtURL:[NSURL fileURLWithPath:JIFLibraryPath]
+    [_fileManager createDirectoryAtURL:[NSURL fileURLWithPath:JIFLibraryPath]
                                     withIntermediateDirectories:false
                                     attributes:nil
                                     error:nil];
@@ -13,7 +46,7 @@
 
 -(void)overwriteMoveFileFromURL:(NSURL*)srcURL toURL:(NSURL*)destURL {
     NSError *error;
-    [NSFileManager.defaultManager replaceItemAtURL:destURL
+    [_fileManager replaceItemAtURL:destURL
                                             withItemAtURL:srcURL
                                             backupItemName:nil
                                             options:NSFileManagerItemReplacementUsingNewMetadataOnly
@@ -22,7 +55,7 @@
     if (error) {
         log("JIFSaver encounters error while overwriting file.\nError: %@", error);
     } else {
-        [NSFileManager.defaultManager removeItemAtURL:srcURL error:nil];
+        [_fileManager removeItemAtURL:srcURL error:nil];
     }
 }
 
@@ -37,4 +70,13 @@
     return destURL;
 }
 
+-(void)dealloc {
+    [self cleanUpTemporaryFiles];
+}
+
++(NSURL *)urlForJIFNamed:(NSString *)name {
+    NSArray *pathComponents = @[JIFLibraryPath, name];
+    NSURL *destURL = [[NSURL fileURLWithPathComponents:pathComponents] URLByAppendingPathExtension:@"mov"];
+    return destURL;
+}
 @end

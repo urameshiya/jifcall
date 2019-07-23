@@ -12,6 +12,8 @@
 
 @interface SBAlertWindow: UIWindow
 -(void)displayAlert:(SBAlert *)alert;
+
++(UIWindowLevel)windowLevel;
 @end
 
 @interface SBAlertManager
@@ -58,7 +60,7 @@
 
 @end
 
-@interface SBMainWorkspace
+@interface SBMainWorkspace <JIFBannerControllerDelegate>
 @property (nonatomic,readonly) SBAlertManager *alertManager;                                                                                                   //@synthesize alertManager=_alertManager - In the implementation block
 +(instancetype)_instanceIfExists;
 @end
@@ -74,6 +76,12 @@
 
 @interface SBAlertToAppsWorkspaceTransaction
 @property (nonatomic,readonly) SBWorkspaceAlert * alert;
+@end
+
+@interface SBLockScreenManager
++(instancetype)sharedInstance;
+
+-(BOOL)isUILocked;
 @end
 
 @interface SBUIController
